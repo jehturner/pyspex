@@ -2,6 +2,7 @@
 
 import numpy as np
 import scipy.ndimage.interpolation as ndi
+from scipy import ndimage
 from astropy.modeling.models import Mapping, Identity, Chebyshev1D, Chebyshev2D
 from astropy.modeling.fitting import LinearLSQFitter
 from astropy import units as u
@@ -161,9 +162,24 @@ for n, ndd in enumerate(df):
     # print 'w', w1, w2, w3
     # print 'wi', w1i, w2i, w3i
 
-df.filename="test.fits"
-#df.save()
+# Resample the data in linear wavelength:
+for ndd in df:
 
-# 370 6416.25 = 6416.3 at 1131.4
-# 100 at 1114.49 (gives 6425)
+    # Construct a regular grid in lambda:
+    #  y, x = np.mgrid[0:ndd.data.shape[0], 0:ndd.data.shape[1]]
+    y = np.arange(ndd.data.shape[0])[:,np.newaxis]\
+        .repeat(ndd.data.shape[1], axis=1)
+    l = np.linspace(5604.998, 6935.218, ndd.data.shape[1])[np.newaxis,:]\
+        .repeat(ndd.data.shape[0], axis=0)
+
+    coords = np.array(tuple(reversed(ndd.wcs.invert(l, y))))
+    ndd.data[:] = ndimage.map_coordinates(ndd.data, coords)
+
+# Stack the slits like gftransform, now that they're on the same grid:
+df[0].data = np.vstack([ndd.data for ndd in df])
+for n, ndd in enumerate(df[1:], start=1):
+    del df[n]
+
+df.filename="test.fits"
+df.save()
 
