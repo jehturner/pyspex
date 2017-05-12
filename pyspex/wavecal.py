@@ -3,7 +3,7 @@
 import numpy as np
 import scipy.ndimage.interpolation as ndi
 from astropy.modeling.models import Mapping, Identity, Chebyshev1D, Chebyshev2D
-from astropy.modeling.fitting import LinearLSQFitter, FittingWithOutlierRemoval
+from astropy.modeling.fitting import LinearLSQFitter
 from astropy import units as u
 from ndmapper.data import *
 from gwcs import wcs, coordinate_frames as cf
@@ -83,13 +83,12 @@ for n, ndd in enumerate(df):
 
     # Fit pixel position in the reference row or shift WRT it as a function of
     # pixel index in each row.
-    # spec_dist = dist_fit(dist_model, x, y, x1)
-    spec_dist, inv_dist = fit_with_inverse(dist_fit, dist_model, x, y, x1)
+    spec_dist, ispec_dist = fit_with_inverse(dist_fit, dist_model, x, y, x1)
 
     # tx = np.arange(0, 3000)
     # ty = np.zeros_like(tx) + 100
     # tx1 = spec_dist(tx, ty)
-    # tx2 = inv_dist(tx1, ty)
+    # tx2 = ispec_dist(tx1, ty)
     # tx3 = spec_dist(tx2, ty)
     # plt.plot(tx, tx1)
     # plt.plot(tx, tx3)
@@ -99,7 +98,9 @@ for n, ndd in enumerate(df):
 
     # Combine into a 2D transformation that just preserves the y co-ordinate:
     spec_dist_mapping = Mapping((0, 1, 1)) | spec_dist & Identity(1)
+    spec_dist_mapping.inverse = Mapping((0, 1, 1)) | ispec_dist & Identity(1)
 
+    # Ref. frames & mappings between them for constructing a gwcs object:
     transforms = [spec_dist_mapping, None]
     frames = [extracted_frame, common_frame]
 
@@ -139,30 +140,26 @@ for n, ndd in enumerate(df):
     l = np.array([wcen for xcen, wcen in refpks[n]])
     print x[3], l[3]
 
-    wave_mapping = wave_fit(wave_model_ref, x, l) & Identity(1)
+    wave_dist, iwave_dist = fit_with_inverse(wave_fit, wave_model_ref, x, l)
 
-    print spec_dist.x_domain
-    print spec_dist.y_domain
-    
+    wave_mapping = wave_dist & Identity(1)
+    wave_mapping.inverse = iwave_dist & Identity(1)
+
     # Append new stage to a copy of the existing WCS:
     #print type(ndd.wcs.get_transform("extracted", "common_wave"))
     df[n] = NDLater(data=ndd, wcs=wcs_append(ndd.wcs, wave_mapping,
                                              wavelength_rss_frame))
 
-    #print df[n].wcs(0, 742)
-    y, x = np.mgrid[0:ndd.data.shape[0], 0:ndd.data.shape[1]]
-    ndd.data[:], y = df[n].wcs(x, y)
-    print df[n].wcs(1131.41, 370)
-    print df[n].wcs(1114.49, 100)
-    print df[n].wcs(1103.75, 745)
-
-    
-
-# To do
-# - 
-
-#for ndd in df:
-#    print(ndd.wcs(2., 1.))
+    # y, x = np.mgrid[0:ndd.data.shape[0], 0:ndd.data.shape[1]]
+    # ndd.data[:], y = df[n].wcs(x, y)
+    # w1 = df[n].wcs(1131.41, 370)
+    # w2 = df[n].wcs(1114.49, 100)
+    # w3 = df[n].wcs(1103.75, 745)
+    # w1i = df[n].wcs.invert(*w1)
+    # w2i = df[n].wcs.invert(*w2)
+    # w3i = df[n].wcs.invert(*w3)
+    # print 'w', w1, w2, w3
+    # print 'wi', w1i, w2i, w3i
 
 df.filename="test.fits"
 #df.save()
